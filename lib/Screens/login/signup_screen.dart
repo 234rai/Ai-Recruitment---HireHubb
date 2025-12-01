@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/user_service.dart'; // ADD THIS
+import '../../models/user_role.dart'; // ADD THIS
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -25,6 +27,8 @@ class _SignUpScreenState extends State<SignUpScreen> with SingleTickerProviderSt
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _slideAnimation;
+
+  final UserService _userService = UserService(); // ADD THIS
 
   @override
   void initState() {
@@ -63,7 +67,7 @@ class _SignUpScreenState extends State<SignUpScreen> with SingleTickerProviderSt
     super.dispose();
   }
 
-  // Email/Password Sign Up (Original logic)
+  // UPDATED: Sign Up with Role
   void _signUp() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -71,20 +75,36 @@ class _SignUpScreenState extends State<SignUpScreen> with SingleTickerProviderSt
       });
 
       try {
+        // Create Firebase Auth account
         UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
 
+        // Update display name
         await userCredential.user!.updateDisplayName(_fullNameController.text.trim());
 
-        print('User created: ${userCredential.user!.uid}');
+        // Determine user role
+        final UserRole role = _userType == 'recruiter'
+            ? UserRole.recruiter
+            : UserRole.jobSeeker;
+
+        // Create user profile with role in Firestore
+        await _userService.createUserProfile(
+          uid: userCredential.user!.uid,
+          email: _emailController.text.trim(),
+          role: role,
+          displayName: _fullNameController.text.trim(),
+          companyName: _userType == 'recruiter' ? _companyController.text.trim() : null,
+        );
+
+        print('✅ User created: ${userCredential.user!.uid} as ${role.displayName}');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account created successfully!'),
-              backgroundColor: Color(0xFFFF2D55),
+            SnackBar(
+              content: Text('Account created successfully as ${role.displayName}!'),
+              backgroundColor: const Color(0xFFFF2D55),
             ),
           );
 
@@ -108,6 +128,15 @@ class _SignUpScreenState extends State<SignUpScreen> with SingleTickerProviderSt
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
               backgroundColor: Colors.red,
             ),
           );

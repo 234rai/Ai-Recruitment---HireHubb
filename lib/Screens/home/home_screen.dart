@@ -65,6 +65,34 @@ class _HomeScreenState extends State<HomeScreen> {
       if (userCredential != null && mounted) {
         print('Google sign-in successful: ${userCredential.user?.email}');
 
+        // Check if user is new (first time sign-in)
+        final isNewUser = await _googleAuthService.isNewUser(userCredential.user!.uid);
+
+        if (isNewUser) {
+          // Show role selection dialog for new users
+          final selectedRole = await _showGoogleSignInRoleSelectionDialog(context);
+
+          if (selectedRole == null) {
+            // User cancelled role selection, sign them out
+            await _googleAuthService.signOut();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please select a role to continue'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+
+          // Save user role to Firestore
+          await _googleAuthService.saveUserRole(
+            uid: userCredential.user!.uid,
+            email: userCredential.user!.email!,
+            displayName: userCredential.user!.displayName ?? '',
+            role: selectedRole,
+          );
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Google sign-in successful!'),
@@ -100,6 +128,179 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  // Add this new method to show role selection dialog:
+  Future<String?> _showGoogleSignInRoleSelectionDialog(BuildContext context) async {
+    String? selectedRole;
+    bool isRecruiter = true;
+    final TextEditingController companyController = TextEditingController();
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return showDialog<String?>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Select Your Role'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Please choose how you want to use HireHubb:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDarkMode ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Role Selection Toggle (same as signup screen)
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Stack(
+                        children: [
+                          AnimatedAlign(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOutCubic,
+                            alignment: isRecruiter ? Alignment.centerLeft : Alignment.centerRight,
+                            child: FractionallySizedBox(
+                              widthFactor: 0.5,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF2D55),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                height: 44,
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      isRecruiter = true;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    color: Colors.transparent,
+                                    child: Text(
+                                      'Recruiter',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: isRecruiter ? Colors.white : (isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600),
+                                        fontWeight: isRecruiter ? FontWeight.w600 : FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      isRecruiter = false;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    color: Colors.transparent,
+                                    child: Text(
+                                      'Job Seeker',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: !isRecruiter ? Colors.white : (isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600),
+                                        fontWeight: !isRecruiter ? FontWeight.w600 : FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Company field for recruiters
+                    if (isRecruiter)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Company Name (Optional)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: isDarkMode ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: companyController,
+                            style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+                            decoration: InputDecoration(
+                              hintText: 'Enter your company name',
+                              hintStyle: TextStyle(color: isDarkMode ? const Color(0xFF6A6A6A) : Colors.grey.shade400),
+                              filled: true,
+                              fillColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: isDarkMode ? const Color(0xFF3A3A3A) : Colors.grey.shade200),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: isDarkMode ? const Color(0xFF3A3A3A) : Colors.grey.shade200),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFFFF2D55), width: 2),
+                              ),
+                              prefixIcon: const Icon(Icons.business_outlined, color: Color(0xFFFF2D55)),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    selectedRole = isRecruiter ? 'recruiter' : 'job_seeker';
+                    Navigator.pop(context, selectedRole);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF2D55),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Continue'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showThemeDialog(BuildContext context) {
